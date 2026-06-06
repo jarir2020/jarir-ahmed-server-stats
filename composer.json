@@ -2,6 +2,12 @@
     "name": "jarir-ahmed/server-stats",
     "description": "A simple server stats package",
     "license": "MIT",
+    "keywords": ["metrics", "monitoring", "server-stats", "counter", "timer"],
+    "require": {
+        "php": ">=8.0",
+        "ext-pdo": "*",
+        "ext-json": "*"
+    },
     "autoload": {
         "psr-4": {
             "JarirAhmed\\ServerStats\\": "src/"

@@ -5,12 +5,14 @@ class Counter
 {
     private $name;
     private $storage;
-    private $value = 0;
+    private $value;
 
     public function __construct(string $name, Storage $storage)
     {
         $this->name = $name;
         $this->storage = $storage;
+        // Resume from last stored value so counters survive across requests/processes.
+        $this->value = $storage->getCurrentValue($name) ?? 0.0;
     }
 
     public function increment(float $amount = 1): self
