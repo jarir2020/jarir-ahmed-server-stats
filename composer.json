@@ -1,0 +1,9 @@
+{
+    "name": "jarir-ahmed/server-stats",
+    "description": "A simple server stats package",
+    "autoload": {
+        "psr-4": {
+            "JarirAhmed\\ServerStats\\": "src/"
+        }
+    }
+}
