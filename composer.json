@@ -1,6 +1,7 @@
 {
     "name": "jarir-ahmed/server-stats",
     "description": "A simple server stats package",
++   "license": "MIT",
     "autoload": {
         "psr-4": {
             "JarirAhmed\\ServerStats\\": "src/"
