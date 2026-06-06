@@ -1,43 +1,56 @@
 <?php
 namespace JarirAhmed\ServerStats;
 
+/**
+ * Static facade over a default {@see Registry}. Convenient for simple apps.
+ * For multiple backends or test isolation, use Registry directly.
+ */
 class Metrics
 {
-    private static ?Storage $storage = null;
+    private static ?Registry $registry = null;
 
-    public static function init(Storage $storage): void
+    public static function init(StorageInterface $storage): void
     {
-        self::$storage = $storage;
+        self::$registry = new Registry($storage);
     }
 
-    private static function storage(): Storage
+    /** Replace/clear the default registry (mainly for tests). */
+    public static function setRegistry(?Registry $registry): void
     {
-        if (self::$storage === null) {
+        self::$registry = $registry;
+    }
+
+    private static function registry(): Registry
+    {
+        if (self::$registry === null) {
             throw new \RuntimeException(
                 'Metrics not initialized. Call Metrics::init(new Storage()) before use.'
             );
         }
-        return self::$storage;
+        return self::$registry;
     }
 
-    public static function counter(string $name): Counter
+    /** @param array<string,mixed> $labels */
+    public static function counter(string $name, array $labels = []): Counter
     {
-        return new Counter($name, self::storage());
+        return self::registry()->counter($name, $labels);
     }
 
-    public static function timer(string $name): Timer
+    /** @param array<string,mixed> $labels */
+    public static function timer(string $name, array $labels = []): Timer
     {
-        return new Timer($name, self::storage());
+        return self::registry()->timer($name, $labels);
     }
 
-    public static function measure(string $name, callable $callback): mixed
+    /** @param array<string,mixed> $labels */
+    public static function gauge(string $name, array $labels = []): Gauge
     {
-        $timer = self::timer($name);
-        $timer->start();
-        try {
-            return call_user_func($callback);
-        } finally {
-            $timer->stop(); // runs even if callback throws
-        }
+        return self::registry()->gauge($name, $labels);
+    }
+
+    /** @param array<string,mixed> $labels */
+    public static function measure(string $name, callable $callback, array $labels = []): mixed
+    {
+        return self::registry()->measure($name, $callback, $labels);
     }
 }

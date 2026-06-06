@@ -3,27 +3,28 @@ namespace JarirAhmed\ServerStats;
 
 class Counter
 {
-    private $name;
-    private $storage;
-    private $value;
+    private string $name;
+    private StorageInterface $storage;
+    /** @var array<string,mixed> */
+    private array $labels;
 
-    public function __construct(string $name, Storage $storage)
+    /** @param array<string,mixed> $labels */
+    public function __construct(string $name, StorageInterface $storage, array $labels = [])
     {
         $this->name = $name;
         $this->storage = $storage;
-        // Resume from last stored value so counters survive across requests/processes.
-        $this->value = $storage->getCurrentValue($name) ?? 0.0;
+        $this->labels = $labels;
     }
 
+    /** Atomically increment; returns $this for chaining. */
     public function increment(float $amount = 1): self
     {
-        $this->value += $amount;
-        $this->storage->save($this->name, $this->value);
+        $this->storage->incrementCounter($this->name, $amount, $this->labels);
         return $this;
     }
 
     public function getValue(): float
     {
-        return $this->value;
+        return $this->storage->getCounter($this->name, $this->labels);
     }
 }

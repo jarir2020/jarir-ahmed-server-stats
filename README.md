@@ -1,104 +1,124 @@
-"# jarir‑ahmed/server‑stats
+# server-stats
 
-A lightweight PHP package that collects basic server metrics (request count, response time, memory usage, etc.) and makes them available via a simple API. This library can be used as a building block for more advanced observability toolkits or as a stand‑alone monitoring solution.
+[![CI](https://github.com/jarir2020/jarir-ahmed-server-stats/actions/workflows/ci.yml/badge.svg)](https://github.com/jarir2020/jarir-ahmed-server-stats/actions/workflows/ci.yml)
 
-## Features
+A small PHP metrics library: **counters**, **gauges**, **timers**, and **system metrics**, stored in
+**MySQL** (with automatic **SQLite** fallback). No external services required.
 
-- **Metrics Collector** – record requests, responses, and custom metrics.
-- **Simple API** – easy to use in any PHP project (plain PHP, Laravel, Symfony, Slim, etc.).
-- **Composer‑friendly** – PSR‑4 autoloading, ready for publishing.
-- **Example script** – see the `examples/` folder for a quick demo.
+## Requirements
 
-## Installation
+- PHP >= 8.0
+- `ext-pdo`, `ext-json`
+- `ext-pdo_mysql` (optional — falls back to SQLite if MySQL is unavailable)
 
-Add the package to your project using Composer:
+## Install
 
 ```bash
 composer require jarir-ahmed/server-stats
 ```
 
-If you are developing locally, you can link the package via a **path repository** (as we did in the test project):
+## Quick start
 
-```json
-{
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../jarir-ahmed/server-stats"
-        }
-    ],
-    "require": {
-        "jarir-ahmed/server-stats": "*"
-    }
-}
+```php
+use JarirAhmed\ServerStats\{Storage, Metrics, MetricCollector};
+
+$storage = new Storage(); // MySQL if reachable, else SQLite in the system temp dir
+Metrics::init($storage);
+
+// Counter — atomic, durable across requests/processes
+Metrics::counter('page_views.home')->increment();
+
+// Gauge — point-in-time value (latest wins)
+Metrics::gauge('queue.depth')->set(42);
+
+// Timer — measure a block; stops even if the callback throws
+$result = Metrics::measure('request.processing', function () {
+    return doWork();
+});
+
+// System metrics (CPU load, memory, disk)
+(new MetricCollector($storage))->recordSystemMetrics();
 ```
 
-Then run:
+## Configuration
+
+`Storage` reads, in order: the `$config` array → `SERVER_STATS_*` environment variables → defaults.
+
+```php
+$storage = new Storage([
+    'host'             => '127.0.0.1',
+    'port'             => '3306',
+    'database'         => 'server_stats',
+    'username'         => 'root',
+    'password'         => '',
+    'charset'          => 'utf8mb4',
+    'sqlite_path'      => '/var/data/server_stats.db', // SQLite fallback location
+    'retention_seconds'=> 7 * 86400,  // auto-prune samples older than this (0 = off)
+    'gc_probability'   => 0.01,        // chance per save() of running a prune sweep
+    'logger'           => fn(string $m) => error_log($m),
+]);
+```
+
+Equivalent env vars: `SERVER_STATS_HOST`, `SERVER_STATS_PORT`, `SERVER_STATS_DATABASE`,
+`SERVER_STATS_USERNAME`, `SERVER_STATS_PASSWORD`, `SERVER_STATS_CHARSET`,
+`SERVER_STATS_SQLITE_PATH`, `SERVER_STATS_RETENTION_SECONDS`.
+
+## Labels
+
+Counters, gauges and timers accept labels. For counters, labels are part of the identity
+(order-independent), so each label set is tracked separately.
+
+```php
+Metrics::counter('http.requests', ['status' => 200])->increment();
+Metrics::counter('http.requests', ['status' => 500])->increment();
+
+Metrics::counter('http.requests', ['status' => 200])->getValue(); // 1.0
+```
+
+## Querying
+
+```php
+$storage->getLatest(20);                       // recent time-series samples (newest first)
+$storage->getCounters();                       // all counters
+$storage->query(['name' => 'request.processing_ms', 'since' => time() - 3600]);
+$storage->aggregate('request.processing_ms', 'avg', time() - 3600); // avg|min|max|sum|count
+$storage->prune(7 * 86400);                    // delete samples older than 7 days
+```
+
+## Without global state
+
+Use `Registry` directly instead of the static `Metrics` facade — handy for multiple backends
+or test isolation:
+
+```php
+use JarirAhmed\ServerStats\{Registry, InMemoryStorage};
+
+$registry = new Registry(new InMemoryStorage());
+$registry->counter('hits')->increment();
+$registry->gauge('temp')->set(21.5);
+```
+
+`InMemoryStorage` implements the same `StorageInterface` and persists nothing — ideal for tests.
+
+## Architecture
+
+- `StorageInterface` — backend contract.
+- `Storage` — PDO backend (MySQL + SQLite). Two tables: `metrics` (time series) and
+  `counters` (atomic aggregate state).
+- `InMemoryStorage` — non-persistent backend.
+- `Registry` — instance API; `Metrics` — static facade over a default registry.
+- `Counter`, `Gauge`, `Timer`, `MetricCollector`.
+
+## Testing
 
 ```bash
 composer install
+composer test
 ```
 
-## Usage
-
-```php
-<?php
-require __DIR__ . '/vendor/autoload.php';
-
-use JarirAhmed\ServerStats\MetricCollector;
-
-// Create a collector instance
-$collector = new MetricCollector();
-
-// Record a request and a response
-$collector->recordRequest();
-$collector->recordResponse();
-
-// Retrieve collected metrics
-$metrics = $collector->getMetrics();
-
-echo \"Collected Metrics:\\n\";
-print_r($metrics);
-```
-
-### Running the bundled example
-
-A ready‑to‑run example lives in the `examples/` directory:
-
-```bash
-cd jarir-ahmed/server-stats
-php examples/index.php
-```
-
-You should see output similar to:
-
-```
-Recording request...
-Recording response...
-
-Collected Metrics:
-Array
-(
-    [total_requests] => 1
-    [last_response_time] => 0.05
-)
-```
-
-## Extending the Package
-
-The current implementation is intentionally minimal. For a real‑world observability toolkit you might add:
-
-- **Prometheus exporter** – expose `/metrics` endpoint.
-- **OpenTelemetry integration** – send traces and metrics to OTEL collectors.
-- **Health checks** – custom health monitors.
-- **Alerting** – webhook or email alerts on threshold breaches.
-
-Feel free to fork or contribute improvements!
+The suite runs against `InMemoryStorage` and the SQLite backend. Set `SERVER_STATS_TEST_MYSQL=1`
+(with MySQL connection env vars) to additionally run the MySQL contract tests.
 
 ## License
 
-This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
-
----
-
-*Happy monitoring!*"
+MIT
